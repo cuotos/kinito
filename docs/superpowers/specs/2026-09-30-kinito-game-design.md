@@ -19,7 +19,9 @@ holding it.
 - **Kinito roll**: dice shown to all immediately (no hide step). The player
   to the right of the roller (i.e. the previous player) gets 3 open rolls.
   Any Kinito combo counts as a hit.
-  - Hit: pot +1 shot. Round resets.
+  - Hit: pot +1 shot. The challenge passes back to the other player for
+    three rolls of their own, and bounces back and forth until someone
+    misses. Someone always drinks the pot.
   - Three misses: "Drink the pot!". Pot resets to 1. Round resets.
 - **Pot**: starts at 1 shot. Displayed always. Persisted in localStorage.
   Reset button on start screen.
