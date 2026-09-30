@@ -6,7 +6,8 @@ Pass-the-phone dice drinking game. One phone, two dice, one pot.
 
 Open `index.html` on a phone (or host it anywhere static).
 
-1. Put one shot in a glass. That's the pot.
+1. Put an empty glass in the middle. That's the pot. The first Kinito
+   pours the first shot in.
 2. Tap ROLL. Your score is the higher die then the lower: 3 and 6 is 63.
 3. Say a number out loud (truth or bluff), tap HIDE & PASS, hand it left.
 4. Next player either taps ROLL and must claim higher, or taps LIAR! to

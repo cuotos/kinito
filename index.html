@@ -118,7 +118,7 @@
   <section id="s-kinito">
     <h1 class="flash">KINITO!!!</h1>
     <div class="dice" id="kinito-dice"></div>
-    <p>Player on the right: 3 rolls to hit a Kinito.</p>
+    <p id="kinito-text"></p>
     <div class="actions">
       <button class="warn" data-action="BEGIN_CHALLENGE">CHALLENGE</button>
     </div>
@@ -175,10 +175,10 @@
 
   function parsePot(raw) {
     const n = Number(raw);
-    return Number.isInteger(n) && n >= 1 ? n : 1;
+    return raw !== null && raw !== '' && Number.isInteger(n) && n >= 0 ? n : 0;
   }
 
-  function initialState(pot = 1) {
+  function initialState(pot = 0) {
     return {
       screen: 'START',
       pot,
@@ -188,6 +188,7 @@
       challengeResult: null,
       challengeSide: null,
       potDrunk: null,
+      firstShot: false,
     };
   }
 
@@ -199,7 +200,10 @@
       case 'ROLL': {
         if (s.screen !== 'HANDOFF') return s;
         const [a, b] = action.dice;
-        return { ...s, current: action.dice, screen: isKinito(a, b) ? 'KINITO' : 'ROLLED' };
+        if (!isKinito(a, b)) return { ...s, current: action.dice, screen: 'ROLLED' };
+        // The glass stays empty until the first Kinito pours a shot in.
+        const firstShot = s.pot === 0;
+        return { ...s, current: action.dice, screen: 'KINITO', firstShot, pot: firstShot ? 1 : s.pot };
       }
 
       case 'HIDE':
@@ -243,10 +247,11 @@
         return {
           ...s, screen: 'HANDOFF', current: null, previous: null,
           attempts: [], challengeResult: null, challengeSide: null, potDrunk: null,
+          firstShot: false,
         };
 
       case 'RESET_POT':
-        return s.screen === 'START' ? { ...s, pot: 1 } : s;
+        return s.screen === 'START' ? { ...s, pot: 0 } : s;
 
       default:
         return s;
@@ -264,7 +269,7 @@
   const FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
 
   function loadPot() {
-    try { return parsePot(localStorage.getItem(POT_KEY)); } catch (e) { return 1; }
+    try { return parsePot(localStorage.getItem(POT_KEY)); } catch (e) { return 0; }
   }
   function savePot(pot) {
     try { localStorage.setItem(POT_KEY, String(pot)); } catch (e) { /* in-memory only */ }
@@ -278,7 +283,9 @@
 
   function render(s) {
     document.body.dataset.screen = s.screen;
-    $('pot').textContent = `Pot: ${shots(s.pot)}`;
+    $('pot').textContent = s.pot === 0 ? 'Pot: empty' : `Pot: ${shots(s.pot)}`;
+    $('kinito-text').textContent = (s.firstShot ? 'Pour the first shot into the pot. ' : '') +
+      'Player on the right: 3 rolls to hit a Kinito.';
 
     $('liar-btn').hidden = s.previous === null;
     disarmLiar();
