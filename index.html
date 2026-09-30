@@ -94,6 +94,26 @@
   button.warn { background: var(--accent2); color: #1a1400; }
   button.ok { background: var(--ok); color: #003321; }
   button[hidden] { display: none; }
+  .rolling {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 24px;
+    background: var(--bg);
+  }
+  .rolling[hidden] { display: none; }
+  .rolling .dice { animation: shake 0.16s linear infinite; }
+  @keyframes shake {
+    0% { transform: translate(0, 0) rotate(0); }
+    25% { transform: translate(-6px, 3px) rotate(-6deg); }
+    50% { transform: translate(5px, -4px) rotate(5deg); }
+    75% { transform: translate(-3px, -2px) rotate(-3deg); }
+    100% { transform: translate(0, 0) rotate(0); }
+  }
   .flash { animation: flash 0.6s steps(2) infinite; color: var(--accent2); }
   @keyframes flash { to { opacity: 0.2; } }
 </style>
@@ -178,6 +198,11 @@
     </div>
   </section>
 </main>
+
+<div class="rolling" id="rolling" hidden>
+  <div class="dice" id="rolling-dice"></div>
+  <p>Rolling…</p>
+</div>
 
 <script id="game">
 (function (root) {
@@ -379,7 +404,31 @@
     for (const c of Object.values(CONFIRM)) $(c.id).textContent = c.label;
   }
 
+  // Rolls take 2 seconds: the real dice are decided up front, then the
+  // overlay flicks random faces before the result is revealed.
+  const ROLL_MS = 2000;
+  const FLICK_MS = 80;
+  let rolling = false;
+  // Separate from the dice RNG: purely cosmetic.
+  const randomFace = () => (crypto.getRandomValues(new Uint8Array(1))[0] % 6) + 1;
+  function animateRoll(done) {
+    rolling = true;
+    const overlay = $('rolling');
+    const flick = () => { $('rolling-dice').textContent = faces([randomFace(), randomFace()]); };
+    flick();
+    overlay.hidden = false;
+    const timer = setInterval(flick, FLICK_MS);
+    setTimeout(() => {
+      clearInterval(timer);
+      overlay.hidden = true;
+      rolling = false;
+      lockUntil = performance.now() + LOCK_MS;
+      done();
+    }, ROLL_MS);
+  }
+
   document.addEventListener('click', (e) => {
+    if (rolling) return;
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
     if (performance.now() < lockUntil) return;
@@ -393,7 +442,8 @@
       return;
     }
     if (type === 'ROLL' || type === 'CHALLENGE_ROLL') {
-      dispatch({ type, dice: rollDice() });
+      const dice = rollDice();
+      animateRoll(() => dispatch({ type, dice }));
     } else {
       dispatch({ type });
     }
