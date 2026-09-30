@@ -270,6 +270,7 @@
     $('pot').textContent = `Pot: ${shots(s.pot)}`;
 
     $('liar-btn').hidden = s.previous === null;
+    disarmLiar();
 
     $('rolled-dice').textContent = faces(s.current);
     $('rolled-score').textContent = s.current ? score(...s.current) : '';
@@ -299,10 +300,30 @@
     render(state);
   }
 
+  // Ignore taps for a moment after anything changes, so a double tap
+  // can't land on the next screen's button or burn a second challenge roll.
+  const LOCK_MS = 400;
+  let lockUntil = 0;
+
+  // LIAR! needs two taps: the first arms it, the second reveals.
+  let liarArmTimer = null;
+  function disarmLiar() {
+    clearTimeout(liarArmTimer);
+    liarArmTimer = null;
+    $('liar-btn').textContent = 'LIAR!';
+  }
+
   document.addEventListener('click', (e) => {
     const btn = e.target.closest('button[data-action]');
     if (!btn) return;
+    if (performance.now() < lockUntil) return;
+    lockUntil = performance.now() + LOCK_MS;
     const type = btn.dataset.action;
+    if (type === 'LIAR' && liarArmTimer === null) {
+      btn.textContent = 'REVEAL? TAP AGAIN';
+      liarArmTimer = setTimeout(disarmLiar, 2500);
+      return;
+    }
     if (type === 'ROLL' || type === 'CHALLENGE_ROLL') {
       dispatch({ type, dice: rollDice() });
     } else {
