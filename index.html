@@ -19,7 +19,14 @@
     --accent2: #ffd166;
     --ok: #3ddc97;
   }
-  * { box-sizing: border-box; }
+  * {
+    box-sizing: border-box;
+    /* Covering the screen with a hand must not select text or pop up menus. */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-touch-callout: none;
+    -webkit-tap-highlight-color: transparent;
+  }
   html, body { margin: 0; height: 100%; }
   body {
     background: var(--bg);
@@ -112,6 +119,11 @@
     background: var(--bg);
   }
   .rolling[hidden] { display: none; }
+  /* Public dice (Kinito and the challenge): as big as the screen allows. */
+  #s-kinito .dice, #s-challenge .dice, #s-result .dice, .rolling .dice {
+    font-size: min(42vw, 34vh);
+    letter-spacing: 0.05em;
+  }
   .rolling .dice { animation: shake 0.16s linear infinite; }
   @keyframes shake {
     0% { transform: translate(0, 0) rotate(0); }
@@ -160,6 +172,9 @@
     #s-handoff, #s-rolled { align-content: start; padding-top: 0; row-gap: 0; }
     #s-handoff h2, #s-rolled h2 { font-size: 1.3rem; }
     .zone { height: 170px; }
+    #s-kinito .dice, #s-challenge .dice, #s-result .dice { font-size: min(24vw, 44vh); }
+    .rolling .dice { font-size: min(30vw, 60vh); }
+    #s-kinito h1 { font-size: 2rem; }
     .zone .dice { font-size: 4.5rem; }
     .zone .score { font-size: 2.6rem; }
     #s-start .rules { margin-bottom: 8px; }
@@ -537,6 +552,10 @@
       }
     } catch (e) { /* browser refused; nothing to do */ }
   });
+
+  // Belt and braces for Android: no selection, no long-press menu.
+  document.addEventListener('selectstart', (e) => e.preventDefault());
+  document.addEventListener('contextmenu', (e) => e.preventDefault());
 
   render(state);
 })();
