@@ -18,4 +18,14 @@ Open `index.html` on a phone (or host it anywhere static).
    misses. They drink the whole pot and the glass
    is empty again until the next Kinito.
 
-The app tracks the pot and remembers it between refreshes.
+Before you tap ROLL, cover the dashed box: that's where your dice appear.
+Kinito challenge rolls are done in the open with a 3 second build-up.
+
+The app tracks the pot and remembers it between refreshes. Quit (top left,
+tap twice) empties it and starts over.
+
+## Full screen
+
+- Android: tap "Full screen" at the top. It also locks to landscape.
+- iPhone: Safari can't go full screen from a web page. Use Share, then Add to
+  Home Screen, and open it from there. Rotate the phone for landscape.

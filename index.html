@@ -3,6 +3,11 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Kinito">
+<meta name="theme-color" content="#14121a">
 <title>Kinito</title>
 <style>
   :root {
@@ -23,7 +28,8 @@
     display: flex;
     flex-direction: column;
     min-height: 100dvh;
-    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right))
+             env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
     overflow-x: hidden;
   }
   header {
@@ -114,13 +120,63 @@
     75% { transform: translate(-3px, -2px) rotate(-3deg); }
     100% { transform: translate(0, 0) rotate(0); }
   }
+  header .left { display: flex; gap: 20px; }
+  /* The private area: same size and position on the pass and roll screens. */
+  .zone {
+    height: 240px;
+    border: 3px dashed var(--muted);
+    border-radius: 20px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+  }
+  .zone-hint { font-size: 1.1rem; line-height: 1.5; }
+  #s-handoff, #s-rolled { justify-content: flex-start; padding-top: 24px; gap: 20px; }
+  .tip { font-size: 0.95rem; opacity: 0.8; }
+  .tip[hidden] { display: none; }
+
+  /* Landscape phones: text and dice on the left, buttons on the right. */
+  @media (orientation: landscape) and (max-height: 520px) {
+    header { padding: 8px 0; }
+    body[data-screen="START"] #s-start,
+    body[data-screen="HANDOFF"] #s-handoff,
+    body[data-screen="ROLLED"] #s-rolled,
+    body[data-screen="LIAR_REVEAL"] #s-liar,
+    body[data-screen="KINITO"] #s-kinito,
+    body[data-screen="CHALLENGE"] #s-challenge,
+    body[data-screen="CHALLENGE_RESULT"] #s-result { display: grid; }
+    section {
+      grid-template-columns: 1fr minmax(220px, 38%);
+      align-content: center;
+      column-gap: 24px;
+      row-gap: 0;
+    }
+    section > * { grid-column: 1; margin: 6px 0; }
+    section > .actions { grid-column: 2; grid-row: 1 / span 8; align-self: center; padding-bottom: 0; }
+    #s-start { align-content: start; padding-top: 0; }
+    #s-start > .actions { align-self: start; position: sticky; top: 8px; }
+    #s-handoff, #s-rolled { align-content: start; padding-top: 0; row-gap: 0; }
+    #s-handoff h2, #s-rolled h2 { font-size: 1.3rem; }
+    .zone { height: 170px; }
+    .zone .dice { font-size: 4.5rem; }
+    .zone .score { font-size: 2.6rem; }
+    #s-start .rules { margin-bottom: 8px; }
+    h1 { font-size: 2.4rem; }
+    .dice { font-size: 5rem; }
+    .score { font-size: 3rem; }
+  }
   .flash { animation: flash 0.6s steps(2) infinite; color: var(--accent2); }
   @keyframes flash { to { opacity: 0.2; } }
 </style>
 </head>
 <body>
 <header>
-  <button class="quit" data-action="QUIT" id="quit-btn">Quit</button>
+  <div class="left">
+    <button class="quit" data-action="QUIT" id="quit-btn">Quit</button>
+    <button class="quit" id="fs-btn" hidden>Full screen</button>
+  </div>
   <span class="pot" id="pot"></span>
 </header>
 
@@ -128,6 +184,7 @@
   <section id="s-start">
     <h1>KINITO</h1>
     <p>Two dice. One pot. Don't get caught.</p>
+    <p class="tip" id="ios-tip" hidden>For full screen on iPhone: Share, then Add to Home Screen. Rotate for landscape.</p>
     <div class="actions">
       <button class="primary" data-action="START">START</button>
       <button data-action="RESET_POT">RESET POT</button>
@@ -143,6 +200,7 @@
 
   <section id="s-handoff">
     <h2>Pass the phone</h2>
+    <div class="zone"><p class="zone-hint">Your dice appear here.<br>Cover this box, then roll.</p></div>
     <p>Roll, or call the last player out.</p>
     <div class="actions">
       <button class="primary" data-action="ROLL">ROLL</button>
@@ -151,8 +209,11 @@
   </section>
 
   <section id="s-rolled">
-    <div class="dice" id="rolled-dice"></div>
-    <div class="score" id="rolled-score"></div>
+    <h2>Your roll</h2>
+    <div class="zone">
+      <div class="dice" id="rolled-dice"></div>
+      <div class="score" id="rolled-score"></div>
+    </div>
     <p>Say a number. Then hide it.</p>
     <div class="actions">
       <button class="primary" data-action="HIDE">HIDE &amp; PASS</button>
@@ -404,9 +465,10 @@
     for (const c of Object.values(CONFIRM)) $(c.id).textContent = c.label;
   }
 
-  // Rolls take 2 seconds: the real dice are decided up front, then the
-  // overlay flicks random faces before the result is revealed.
-  const ROLL_MS = 2000;
+  // Kinito challenge rolls are done in the open, so they get a 3 second
+  // build-up: the real dice are decided up front, then the overlay flicks
+  // random faces before the result is revealed. Normal rolls are instant.
+  const ROLL_MS = 3000;
   const FLICK_MS = 80;
   let rolling = false;
   // Separate from the dice RNG: purely cosmetic.
@@ -441,12 +503,39 @@
       armTimer = setTimeout(disarm, 2500);
       return;
     }
-    if (type === 'ROLL' || type === 'CHALLENGE_ROLL') {
+    if (type === 'CHALLENGE_ROLL') {
       const dice = rollDice();
       animateRoll(() => dispatch({ type, dice }));
+    } else if (type === 'ROLL') {
+      dispatch({ type, dice: rollDice() });
     } else {
       dispatch({ type });
     }
+  });
+
+  // Full screen + landscape where the browser allows it (not iPhone Safari).
+  const fsEnabled = document.fullscreenEnabled || document.webkitFullscreenEnabled;
+  const fsElement = () => document.fullscreenElement || document.webkitFullscreenElement;
+  const fsBtn = $('fs-btn');
+  const isIOS = /iPhone|iPod/.test(navigator.userAgent);
+  const standalone = navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  $('ios-tip').hidden = !(isIOS && !fsEnabled && !standalone);
+  fsBtn.hidden = !fsEnabled;
+  const syncFs = () => { fsBtn.textContent = fsElement() ? 'Exit full screen' : 'Full screen'; };
+  document.addEventListener('fullscreenchange', syncFs);
+  document.addEventListener('webkitfullscreenchange', syncFs);
+  fsBtn.addEventListener('click', async () => {
+    try {
+      if (fsElement()) {
+        await (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+      } else {
+        const el = document.documentElement;
+        await (el.requestFullscreen || el.webkitRequestFullscreen).call(el);
+        if (screen.orientation && screen.orientation.lock) {
+          await screen.orientation.lock('landscape').catch(() => {});
+        }
+      }
+    } catch (e) { /* browser refused; nothing to do */ }
   });
 
   render(state);
