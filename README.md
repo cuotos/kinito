@@ -19,7 +19,8 @@ Open `index.html` on a phone (or host it anywhere static).
    is empty again until the next Kinito.
 
 Before you tap ROLL, cover the dashed box: that's where your dice appear.
-Kinito challenge rolls are done in the open with a 3 second build-up.
+A normal roll shuffles inside the box for a second. Kinito challenge rolls
+are done in the open, full screen, with a 1 to 5 second build-up.
 
 The app tracks the pot and remembers it between refreshes. Quit (top left,
 tap twice) empties it and starts over.

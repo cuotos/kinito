@@ -18,6 +18,7 @@
     --accent: #ff4d6d;
     --accent2: #ffd166;
     --ok: #3ddc97;
+    --kinito-bg: #a3123f;
   }
   * {
     box-sizing: border-box;
@@ -38,7 +39,11 @@
     padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right))
              env(safe-area-inset-bottom) max(16px, env(safe-area-inset-left));
     overflow-x: hidden;
+    transition: background-color 0.4s ease;
   }
+  body.kinito-bg { background: var(--kinito-bg); }
+  body.kinito-bg p, body.kinito-bg header button.quit { color: #ffe3ea; }
+  body.kinito-bg .flash { color: #fff1c2; }
   header {
     display: flex;
     justify-content: space-between;
@@ -135,16 +140,33 @@
   header .left { display: flex; gap: 20px; }
   /* The private area: same size and position on the pass and roll screens. */
   .zone {
-    height: 240px;
+    position: relative;
+    align-self: center;
+    justify-self: center;
+    width: fit-content;
+    padding: 12px 20px;
     border: 3px dashed var(--muted);
     border-radius: 20px;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
     gap: 4px;
   }
-  .zone-hint { font-size: 1.1rem; line-height: 1.5; }
+  /* The pass screen sizes its box with invisible dice, so it matches the roll screen. */
+  .zone .ghost { visibility: hidden; }
+  /* Normal rolls shuffle privately inside the box for 1 second. */
+  .zone.shuffling #handoff-dice { visibility: visible; animation: shake 0.16s linear infinite; }
+  .zone.shuffling .zone-hint { display: none; }
+  .zone-hint {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px;
+    font-size: 1.05rem;
+    line-height: 1.4;
+  }
   #s-handoff, #s-rolled { justify-content: flex-start; padding-top: 24px; gap: 20px; }
   .tip { font-size: 0.95rem; opacity: 0.8; }
   .tip[hidden] { display: none; }
@@ -171,7 +193,8 @@
     #s-start > .actions { align-self: start; position: sticky; top: 8px; }
     #s-handoff, #s-rolled { align-content: start; padding-top: 0; row-gap: 0; }
     #s-handoff h2, #s-rolled h2 { font-size: 1.3rem; }
-    .zone { height: 170px; }
+    .zone { padding: 8px 16px; }
+    .zone-hint { font-size: 0.9rem; }
     #s-kinito .dice, #s-challenge .dice, #s-result .dice { font-size: min(24vw, 44vh); }
     .rolling .dice { font-size: min(30vw, 60vh); }
     #s-kinito h1 { font-size: 2rem; }
@@ -215,7 +238,11 @@
 
   <section id="s-handoff">
     <h2>Pass the phone</h2>
-    <div class="zone"><p class="zone-hint">Your dice appear here.<br>Cover this box, then roll.</p></div>
+    <div class="zone">
+      <div class="dice ghost" id="handoff-dice">⚅ ⚅</div>
+      <div class="score ghost">66</div>
+      <p class="zone-hint">Your dice appear here.<br>Cover this box, then roll.</p>
+    </div>
     <p>Roll, or call the last player out.</p>
     <div class="actions">
       <button class="primary" data-action="ROLL">ROLL</button>
@@ -421,6 +448,13 @@
 
   function render(s) {
     document.body.dataset.screen = s.screen;
+    // Colour the background for a Kinito: the roll that triggered it, a
+    // challenge hit, and the challenge screen until the first roll. Black
+    // while rolling (the overlay is black) and after a miss.
+    document.body.classList.toggle('kinito-bg',
+      s.screen === 'KINITO' ||
+      (s.screen === 'CHALLENGE_RESULT' && s.challengeResult === 'HIT') ||
+      (s.screen === 'CHALLENGE' && s.attempts.length === 0));
     $('pot').textContent = s.pot === 0 ? 'Pot: empty' : `Pot: ${shots(s.pot)}`;
     $('kinito-text').textContent = (s.firstShot ? 'Pour the first shot into the pot. ' : '') +
       'Player on the right: 3 rolls to hit a Kinito.';
@@ -480,28 +514,43 @@
     for (const c of Object.values(CONFIRM)) $(c.id).textContent = c.label;
   }
 
-  // Kinito challenge rolls are done in the open, so they get a 3 second
-  // build-up: the real dice are decided up front, then the overlay flicks
-  // random faces before the result is revealed. Normal rolls are instant.
-  const ROLL_MS = 3000;
+  // Kinito challenge rolls are done in the open, so they get a build-up of
+  // a random 1 to 5 seconds: the real dice are decided up front, then the
+  // overlay flicks random faces before the result is revealed. Normal rolls
+  // are instant.
+  const rollMs = () => 1000 + (crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32) * 4000;
   const FLICK_MS = 80;
   let rolling = false;
   // Separate from the dice RNG: purely cosmetic.
   const randomFace = () => (crypto.getRandomValues(new Uint8Array(1))[0] % 6) + 1;
-  function animateRoll(done) {
+  const NORMAL_ROLL_MS = 1000;
+  // Flick random faces in `diceEl` for `ms`, with taps blocked, then call done.
+  function shuffle(diceEl, ms, show, hide, done) {
     rolling = true;
-    const overlay = $('rolling');
-    const flick = () => { $('rolling-dice').textContent = faces([randomFace(), randomFace()]); };
+    const flick = () => { diceEl.textContent = faces([randomFace(), randomFace()]); };
     flick();
-    overlay.hidden = false;
+    show();
     const timer = setInterval(flick, FLICK_MS);
     setTimeout(() => {
       clearInterval(timer);
-      overlay.hidden = true;
+      hide();
       rolling = false;
       lockUntil = performance.now() + LOCK_MS;
       done();
-    }, ROLL_MS);
+    }, ms);
+  }
+  // Kinito challenge: full-screen overlay, 1 to 5 seconds.
+  function animateRoll(done) {
+    const overlay = $('rolling');
+    shuffle($('rolling-dice'), rollMs(), () => { overlay.hidden = false; }, () => { overlay.hidden = true; }, done);
+  }
+  // Normal roll: inside the covered box on the pass screen, 1 second.
+  function animateNormalRoll(done) {
+    const zone = $('handoff-dice').parentElement;
+    shuffle($('handoff-dice'), NORMAL_ROLL_MS,
+      () => zone.classList.add('shuffling'),
+      () => { zone.classList.remove('shuffling'); $('handoff-dice').textContent = faces([6, 6]); },
+      done);
   }
 
   document.addEventListener('click', (e) => {
@@ -522,7 +571,8 @@
       const dice = rollDice();
       animateRoll(() => dispatch({ type, dice }));
     } else if (type === 'ROLL') {
-      dispatch({ type, dice: rollDice() });
+      const dice = rollDice();
+      animateNormalRoll(() => dispatch({ type, dice }));
     } else {
       dispatch({ type });
     }
