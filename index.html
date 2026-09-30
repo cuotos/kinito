@@ -34,7 +34,34 @@
     font-weight: 700;
     color: var(--muted);
   }
-  header .pot { color: var(--accent2); }
+  header .pot { color: var(--accent2); margin-left: auto; }
+  header button.quit {
+    width: auto;
+    min-height: 0;
+    padding: 8px 0;
+    background: none;
+    border-radius: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: var(--muted);
+    opacity: 0.7;
+  }
+  header button.quit:active { transform: none; }
+  .rules {
+    text-align: left;
+    margin: 0;
+    padding: 16px 16px 16px 36px;
+    background: var(--panel);
+    border-radius: 16px;
+    color: var(--muted);
+    font-size: 1rem;
+    line-height: 1.45;
+  }
+  .rules li + li { margin-top: 6px; }
+  .rules b { color: var(--text); }
+  #s-start .actions { padding-bottom: 0; }
+  #s-start .rules { margin-bottom: 16px; }
+  #s-start { justify-content: flex-start; gap: 16px; padding-top: 8px; }
   main { flex: 1; display: flex; flex-direction: column; }
   section { display: none; flex: 1; flex-direction: column; justify-content: center; gap: 24px; text-align: center; }
   body[data-screen="START"] #s-start,
@@ -73,7 +100,7 @@
 </head>
 <body>
 <header>
-  <span>KINITO</span>
+  <button class="quit" data-action="QUIT" id="quit-btn">Quit</button>
   <span class="pot" id="pot"></span>
 </header>
 
@@ -85,6 +112,13 @@
       <button class="primary" data-action="START">START</button>
       <button data-action="RESET_POT">RESET POT</button>
     </div>
+    <ol class="rules">
+      <li>Roll, peek, hide. Higher die first: <b>3 &amp; 6 = 63</b>.</li>
+      <li>Say a score out loud, true or a bluff, and pass left. The next player must claim higher, or call <b>LIAR!</b></li>
+      <li>Caught lying? You drink. Wrong call? The accuser drinks.</li>
+      <li><b>2:1, 6:5, 6:6 is KINITO.</b> The player on the right gets 3 rolls to hit one. Hit: add a shot and pass it back. Miss: drink the pot.</li>
+      <li>The pot is empty until the first Kinito pours a shot in.</li>
+    </ol>
   </section>
 
   <section id="s-handoff">
@@ -250,6 +284,9 @@
           firstShot: false,
         };
 
+      case 'QUIT':
+        return initialState(0);
+
       case 'RESET_POT':
         return s.screen === 'START' ? { ...s, pot: 0 } : s;
 
@@ -288,7 +325,8 @@
       'Player on the right: 3 rolls to hit a Kinito.';
 
     $('liar-btn').hidden = s.previous === null;
-    disarmLiar();
+    disarm();
+    $('quit-btn').hidden = s.screen === 'START';
 
     $('rolled-dice').textContent = faces(s.current);
     $('rolled-score').textContent = s.current ? score(...s.current) : '';
@@ -327,12 +365,18 @@
   const LOCK_MS = 400;
   let lockUntil = 0;
 
-  // LIAR! needs two taps: the first arms it, the second reveals.
-  let liarArmTimer = null;
-  function disarmLiar() {
-    clearTimeout(liarArmTimer);
-    liarArmTimer = null;
-    $('liar-btn').textContent = 'LIAR!';
+  // LIAR! and Quit need two taps: the first arms the button, the second acts.
+  const CONFIRM = {
+    LIAR: { id: 'liar-btn', label: 'LIAR!', armed: 'REVEAL? TAP AGAIN' },
+    QUIT: { id: 'quit-btn', label: 'Quit', armed: 'Quit? Tap again' },
+  };
+  let armed = null;
+  let armTimer = null;
+  function disarm() {
+    clearTimeout(armTimer);
+    armTimer = null;
+    armed = null;
+    for (const c of Object.values(CONFIRM)) $(c.id).textContent = c.label;
   }
 
   document.addEventListener('click', (e) => {
@@ -341,9 +385,11 @@
     if (performance.now() < lockUntil) return;
     lockUntil = performance.now() + LOCK_MS;
     const type = btn.dataset.action;
-    if (type === 'LIAR' && liarArmTimer === null) {
-      btn.textContent = 'REVEAL? TAP AGAIN';
-      liarArmTimer = setTimeout(disarmLiar, 2500);
+    if (CONFIRM[type] && armed !== type) {
+      disarm();
+      armed = type;
+      btn.textContent = CONFIRM[type].armed;
+      armTimer = setTimeout(disarm, 2500);
       return;
     }
     if (type === 'ROLL' || type === 'CHALLENGE_ROLL') {
