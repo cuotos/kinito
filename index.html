@@ -235,7 +235,7 @@
         if (attempts.length >= 3) {
           return {
             ...s, attempts, screen: 'CHALLENGE_RESULT', challengeResult: 'MISS',
-            potDrunk: s.pot, pot: 1,
+            potDrunk: s.pot, pot: 0,
           };
         }
         return { ...s, attempts };
@@ -311,7 +311,7 @@
       $('result-text').textContent = `Pot is now ${shots(s.pot)}. Pass it back ${backSide}: 3 rolls to hit a Kinito.`;
     } else if (s.challengeResult === 'MISS') {
       $('result-title').textContent = 'Drink the pot!';
-      $('result-text').textContent = `${shots(s.potDrunk)} down the hatch. Pot resets to 1.`;
+      $('result-text').textContent = `${shots(s.potDrunk)} down the hatch. The glass is empty again.`;
     }
     $('result-dice').textContent = faces(last);
   }

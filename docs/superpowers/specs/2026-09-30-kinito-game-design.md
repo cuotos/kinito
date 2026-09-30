@@ -22,9 +22,9 @@ holding it.
   - Hit: pot +1 shot. The challenge passes back to the other player for
     three rolls of their own, and bounces back and forth until someone
     misses. Someone always drinks the pot.
-  - Three misses: "Drink the pot!". Pot resets to 1. Round resets.
+  - Three misses: "Drink the pot!". Pot resets to 0. Round resets.
 - **Pot**: starts empty (0). The first Kinito rolled pours in 1 shot. After
-  someone drinks it, it resets to 1. Displayed always. Persisted in localStorage.
+  someone drinks it, it is empty (0) again until the next Kinito. Displayed always. Persisted in localStorage.
   Reset button on start screen.
 
 ## Non-goals
