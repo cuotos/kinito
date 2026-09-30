@@ -57,7 +57,8 @@ State shape:
   current: [a,b] | null,     // roll just made, shown on ROLLED/KINITO
   previous: [a,b] | null,    // last hidden roll this round; null => LIAR hidden
   attempts: [[a,b], ...],    // challenge rolls so far (max 3)
-  challengeResult: 'HIT'|'MISS'|null
+  challengeResult: 'HIT'|'MISS'|null,
+  potDrunk: int | null       // shots drunk on a MISS, so the result screen can say so after pot resets
 }
 ```
 
@@ -72,7 +73,7 @@ BEGIN_CHALLENGE  KINITO -> CHALLENGE, attempts = []
 CHALLENGE_ROLL {dice}
                  CHALLENGE -> CHALLENGE (miss, <3) |
                               CHALLENGE_RESULT HIT (pot+1) |
-                              CHALLENGE_RESULT MISS after 3 (pot=1)
+                              CHALLENGE_RESULT MISS after 3 (potDrunk=pot, pot=1)
 NEW_ROUND        LIAR_REVEAL|CHALLENGE_RESULT -> HANDOFF, previous=null
 RESET_POT        pot = 1 (START only)
 ```
