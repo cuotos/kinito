@@ -4,8 +4,145 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Kinito</title>
+<style>
+  :root {
+    --bg: #14121a;
+    --panel: #221e2e;
+    --text: #f4f1ff;
+    --muted: #a79fc4;
+    --accent: #ff4d6d;
+    --accent2: #ffd166;
+    --ok: #3ddc97;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, system-ui, "Segoe UI", Roboto, sans-serif;
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+    padding: env(safe-area-inset-top) 16px env(safe-area-inset-bottom);
+    overflow-x: hidden;
+  }
+  header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px 0;
+    font-weight: 700;
+    color: var(--muted);
+  }
+  header .pot { color: var(--accent2); }
+  main { flex: 1; display: flex; flex-direction: column; }
+  section { display: none; flex: 1; flex-direction: column; justify-content: center; gap: 24px; text-align: center; }
+  body[data-screen="START"] #s-start,
+  body[data-screen="HANDOFF"] #s-handoff,
+  body[data-screen="ROLLED"] #s-rolled,
+  body[data-screen="LIAR_REVEAL"] #s-liar,
+  body[data-screen="KINITO"] #s-kinito,
+  body[data-screen="CHALLENGE"] #s-challenge,
+  body[data-screen="CHALLENGE_RESULT"] #s-result { display: flex; }
+  h1 { font-size: 3rem; margin: 0; letter-spacing: 0.05em; }
+  h2 { font-size: 1.6rem; margin: 0; }
+  p { font-size: 1.2rem; color: var(--muted); margin: 0; }
+  .dice { font-size: 7rem; line-height: 1; letter-spacing: 0.1em; }
+  .score { font-size: 4rem; font-weight: 800; }
+  .actions { display: flex; flex-direction: column; gap: 12px; padding-bottom: 16px; }
+  button {
+    width: 100%;
+    min-height: 64px;
+    border: 0;
+    border-radius: 16px;
+    font-size: 1.4rem;
+    font-weight: 700;
+    background: var(--panel);
+    color: var(--text);
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
+  }
+  button:active { transform: scale(0.98); }
+  button.primary { background: var(--accent); }
+  button.warn { background: var(--accent2); color: #1a1400; }
+  button.ok { background: var(--ok); color: #003321; }
+  button[hidden] { display: none; }
+  .flash { animation: flash 0.6s steps(2) infinite; color: var(--accent2); }
+  @keyframes flash { to { opacity: 0.2; } }
+</style>
 </head>
 <body>
+<header>
+  <span>KINITO</span>
+  <span class="pot" id="pot"></span>
+</header>
+
+<main>
+  <section id="s-start">
+    <h1>KINITO</h1>
+    <p>Two dice. One pot. Don't get caught.</p>
+    <div class="actions">
+      <button class="primary" data-action="START">START</button>
+      <button data-action="RESET_POT">RESET POT</button>
+    </div>
+  </section>
+
+  <section id="s-handoff">
+    <h2>Pass the phone</h2>
+    <p>Roll, or call the last player out.</p>
+    <div class="actions">
+      <button class="primary" data-action="ROLL">ROLL</button>
+      <button class="warn" data-action="LIAR" id="liar-btn">LIAR!</button>
+    </div>
+  </section>
+
+  <section id="s-rolled">
+    <div class="dice" id="rolled-dice"></div>
+    <div class="score" id="rolled-score"></div>
+    <p>Say a number. Then hide it.</p>
+    <div class="actions">
+      <button class="primary" data-action="HIDE">HIDE &amp; PASS</button>
+    </div>
+  </section>
+
+  <section id="s-liar">
+    <h2>They had…</h2>
+    <div class="dice" id="liar-dice"></div>
+    <div class="score" id="liar-score"></div>
+    <p>Who lied? Loser drinks.</p>
+    <div class="actions">
+      <button class="primary" data-action="NEW_ROUND">NEW ROUND</button>
+    </div>
+  </section>
+
+  <section id="s-kinito">
+    <h1 class="flash">KINITO!!!</h1>
+    <div class="dice" id="kinito-dice"></div>
+    <p>Player on the right: 3 rolls to hit a Kinito.</p>
+    <div class="actions">
+      <button class="warn" data-action="BEGIN_CHALLENGE">CHALLENGE</button>
+    </div>
+  </section>
+
+  <section id="s-challenge">
+    <h2 id="attempt-label"></h2>
+    <div class="dice" id="challenge-dice"></div>
+    <p>Need 2:1, 6:5 or 6:6.</p>
+    <div class="actions">
+      <button class="primary" data-action="CHALLENGE_ROLL">ROLL</button>
+    </div>
+  </section>
+
+  <section id="s-result">
+    <h1 id="result-title"></h1>
+    <div class="dice" id="result-dice"></div>
+    <p id="result-text"></p>
+    <div class="actions">
+      <button class="primary" data-action="NEW_ROUND">NEW ROUND</button>
+    </div>
+  </section>
+</main>
+
 <script id="game">
 (function (root) {
   'use strict';
@@ -107,6 +244,74 @@
 
   root.Kinito = { score, isKinito, rollDice, parsePot, initialState, reduce };
 })(typeof window !== 'undefined' ? window : globalThis);
+</script>
+<script id="ui">
+(function () {
+  'use strict';
+  const { score, rollDice, initialState, reduce, parsePot } = window.Kinito;
+  const POT_KEY = 'kinito.pot';
+  const FACES = ['', '⚀', '⚁', '⚂', '⚃', '⚄', '⚅'];
+
+  function loadPot() {
+    try { return parsePot(localStorage.getItem(POT_KEY)); } catch (e) { return 1; }
+  }
+  function savePot(pot) {
+    try { localStorage.setItem(POT_KEY, String(pot)); } catch (e) { /* in-memory only */ }
+  }
+
+  let state = initialState(loadPot());
+
+  const $ = (id) => document.getElementById(id);
+  const faces = (dice) => dice ? dice.map((d) => FACES[d]).join(' ') : '';
+  const shots = (n) => `${n} shot${n === 1 ? '' : 's'}`;
+
+  function render(s) {
+    document.body.dataset.screen = s.screen;
+    $('pot').textContent = `Pot: ${shots(s.pot)}`;
+
+    $('liar-btn').hidden = s.previous === null;
+
+    $('rolled-dice').textContent = faces(s.current);
+    $('rolled-score').textContent = s.current ? score(...s.current) : '';
+
+    $('liar-dice').textContent = faces(s.previous);
+    $('liar-score').textContent = s.previous ? score(...s.previous) : '';
+
+    $('kinito-dice').textContent = faces(s.current);
+
+    const last = s.attempts[s.attempts.length - 1] || null;
+    $('attempt-label').textContent = `Attempt ${Math.min(s.attempts.length + 1, 3)} of 3`;
+    $('challenge-dice').textContent = faces(last);
+
+    if (s.challengeResult === 'HIT') {
+      $('result-title').textContent = 'KINITO!';
+      $('result-text').textContent = `Pot is now ${shots(s.pot)}.`;
+    } else if (s.challengeResult === 'MISS') {
+      $('result-title').textContent = 'Drink the pot!';
+      $('result-text').textContent = `${shots(s.potDrunk)} down the hatch. Pot resets to 1.`;
+    }
+    $('result-dice').textContent = faces(last);
+  }
+
+  function dispatch(action) {
+    state = reduce(state, action);
+    savePot(state.pot);
+    render(state);
+  }
+
+  document.addEventListener('click', (e) => {
+    const btn = e.target.closest('button[data-action]');
+    if (!btn) return;
+    const type = btn.dataset.action;
+    if (type === 'ROLL' || type === 'CHALLENGE_ROLL') {
+      dispatch({ type, dice: rollDice() });
+    } else {
+      dispatch({ type });
+    }
+  });
+
+  render(state);
+})();
 </script>
 </body>
 </html>
