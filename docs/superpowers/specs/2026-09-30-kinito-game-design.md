@@ -38,7 +38,7 @@ Portrait mobile layout, buttons full-width and at least 64px tall.
 
 ### Game logic (pure, testable)
 
-A pure module inside the page, exposed as `window.Kinito` for tests:
+A pure module inside the page, exposed as `window.Kinito`:
 
 ```
 score(a, b)            -> int            max*10 + min
@@ -78,7 +78,7 @@ NEW_ROUND        LIAR_REVEAL|CHALLENGE_RESULT -> HANDOFF, previous=null
 RESET_POT        pot = 1 (START only)
 ```
 
-Dice values are passed in as action payload so the reducer is deterministic.
+Dice values are passed in as action payload so the reducer stays pure.
 
 ### UI layer
 
@@ -108,19 +108,8 @@ Pot shown in a persistent header on every screen.
 
 ## Testing
 
-`test/game.test.js` run with `node --test`. The game logic lives in a
-`<script id="game">` block in `index.html` and must not touch the DOM. The
-test reads `index.html`, extracts that block with a regex, evaluates it with
-`node:vm`, and reads `Kinito` from the resulting context. Covers:
-
-- score: 3,6 -> 63; 6,3 -> 63; 4,4 -> 44; 1,2 -> 21
-- isKinito: 2,1 / 1,2 / 6,5 / 5,6 / 6,6 true; 6,4 / 1,1 false
-- reduce: every transition above, LIAR ignored when previous null,
-  challenge hit on attempt 1/2/3 increments pot once, three misses reset
-  pot to 1, NEW_ROUND clears previous and attempts.
-
-Manual check: open in iOS Safari, confirm buttons reachable one-handed and
-no horizontal scroll.
+No automated tests. Manual check in iOS Safari: every screen reachable,
+buttons one-handed, pot survives refresh, no horizontal scroll.
 
 ## Deployment
 

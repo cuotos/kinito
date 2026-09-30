@@ -4,16 +4,16 @@
 
 **Goal:** A single-file mobile web page that rolls, hides and reveals two dice for the Kinito pass-the-phone drinking game, tracking the pot.
 
-**Architecture:** All game rules live in a pure reducer inside a `<script id="game">` block in `index.html`, exposed as `Kinito` on the global object. A thin UI layer in a second script block renders state to the DOM and dispatches actions. Tests extract the game block from the HTML and run it in `node:vm`.
+**Architecture:** All game rules live in a pure reducer inside a `<script id="game">` block in `index.html`, exposed as `Kinito` on the global object. A thin UI layer in a second script block renders state to the DOM and dispatches actions.
 
-**Tech Stack:** Vanilla HTML/CSS/JS, Node 20+ built-in test runner (`node --test`). No dependencies, no build.
+**Tech Stack:** Vanilla HTML/CSS/JS. No dependencies, no build, no automated tests (owner's choice). Each task ends with a browser smoke check instead.
 
 **Spec:** `docs/superpowers/specs/2026-09-30-kinito-game-design.md`
 
 ## Global Constraints
 
 - Single deliverable file `index.html`; no external scripts or stylesheets.
-- Game logic script must not reference `document` or `window` directly (tests run it in a bare vm context).
+- Game logic script must not reference `document` or `window` directly.
 - Dice values are always passed into the reducer as action payloads; the reducer never calls `Math.random`.
 - Score = `max*10 + min`. Kinito = unordered pair in {1:2, 5:6, 6:6}.
 - Pot starts at 1, never below 1. Persisted under localStorage key `kinito.pot`.
@@ -22,110 +22,34 @@
 
 ## Review Focus
 
-1. Double-tapping ROLL: a second `ROLL` while on `ROLLED` must be ignored, not re-roll. (Test in Task 2.)
-2. Corrupt localStorage (`"abc"`, `"0"`, `"-3"`, `null`): pot must load as 1, not NaN or 0. (Test `parsePot` in Task 4.)
-3. Challenge dice arriving in either order (1,2 vs 2,1) must both count as a hit. (Test in Task 3.)
-4. `NEW_ROUND` from a screen other than `LIAR_REVEAL`/`CHALLENGE_RESULT` must be ignored. (Test in Task 3.)
-5. A Kinito on the very first roll of a round: previous is null, must still go to `KINITO` and the reducer must not crash. (Test in Task 3.)
+Behaviours to check by hand in the browser at the end (no unit tests by owner's choice):
+
+1. Double-tapping ROLL must not re-roll: reducer ignores `ROLL` unless on `HANDOFF`.
+2. Corrupt localStorage (`"abc"`, `"0"`, `"-3"`): pot loads as 1, never NaN or 0.
+3. Challenge dice in either order (1,2 vs 2,1) both count as a hit.
+4. `NEW_ROUND` from any screen other than `LIAR_REVEAL`/`CHALLENGE_RESULT` is ignored.
+5. Kinito on the very first roll of a round (previous null) still reaches `KINITO`.
 
 ---
 
 ## File Structure
 
 - `index.html` — the whole app. Three parts in order: `<style>`, markup for every screen, `<script id="game">` (pure logic), `<script id="ui">` (DOM).
-- `test/load.js` — extracts the game block from `index.html`, runs it in a vm, exports `Kinito`.
-- `test/game.test.js` — all unit tests.
-- `package.json` — `"test": "node --test"` only. No dependencies.
-- `README.md` — how to play and how to run tests.
+- `README.md` — how to play.
 
 ---
 
-### Task 1: Test harness, scoring and Kinito detection
+### Task 1: Game logic block
 
 **Files:**
-- Create: `package.json`
-- Create: `index.html` (skeleton with game block only)
-- Create: `test/load.js`
-- Create: `test/game.test.js`
+- Create: `index.html` (skeleton + `<script id="game">`)
 
 **Interfaces:**
-- Produces: `Kinito.score(a, b) -> number`, `Kinito.isKinito(a, b) -> boolean`, `Kinito.rollDice(rng?) -> [number, number]`.
+- Produces: `Kinito.score(a, b)`, `Kinito.isKinito(a, b)`, `Kinito.rollDice(rng?)`, `Kinito.initialState(pot = 1)`, `Kinito.reduce(state, action)`, `Kinito.parsePot(raw)`.
+  State: `{ screen, pot, current, previous, attempts, challengeResult, potDrunk }`.
+  Actions: `START`, `ROLL {dice}`, `HIDE`, `LIAR`, `BEGIN_CHALLENGE`, `CHALLENGE_ROLL {dice}`, `NEW_ROUND`, `RESET_POT`.
 
-- [ ] **Step 1: Create package.json**
-
-```json
-{
-  "name": "kinito",
-  "private": true,
-  "version": "0.1.0",
-  "scripts": {
-    "test": "node --test"
-  }
-}
-```
-
-- [ ] **Step 2: Create the loader**
-
-`test/load.js`:
-
-```js
-const fs = require('node:fs');
-const path = require('node:path');
-const vm = require('node:vm');
-
-const html = fs.readFileSync(path.join(__dirname, '..', 'index.html'), 'utf8');
-const match = html.match(/<script id="game">([\s\S]*?)<\/script>/);
-if (!match) throw new Error('index.html has no <script id="game"> block');
-
-const context = {};
-vm.runInNewContext(match[1], context);
-if (!context.Kinito) throw new Error('game script did not define Kinito');
-
-module.exports = context.Kinito;
-```
-
-- [ ] **Step 3: Write the failing tests**
-
-`test/game.test.js`:
-
-```js
-const test = require('node:test');
-const assert = require('node:assert/strict');
-const Kinito = require('./load');
-
-test('score puts the higher die in the tens column', () => {
-  assert.equal(Kinito.score(3, 6), 63);
-  assert.equal(Kinito.score(6, 3), 63);
-  assert.equal(Kinito.score(4, 4), 44);
-  assert.equal(Kinito.score(1, 2), 21);
-});
-
-test('isKinito matches 2:1, 6:5, 6:6 in either order', () => {
-  for (const [a, b] of [[2, 1], [1, 2], [6, 5], [5, 6], [6, 6]]) {
-    assert.equal(Kinito.isKinito(a, b), true, `${a}:${b}`);
-  }
-  for (const [a, b] of [[6, 4], [1, 1], [3, 6], [5, 5]]) {
-    assert.equal(Kinito.isKinito(a, b), false, `${a}:${b}`);
-  }
-});
-
-test('rollDice uses the supplied rng and returns values 1..6', () => {
-  assert.deepEqual(Kinito.rollDice(() => 0), [1, 1]);
-  assert.deepEqual(Kinito.rollDice(() => 0.999), [6, 6]);
-  const values = [0.1, 0.9];
-  let i = 0;
-  assert.deepEqual(Kinito.rollDice(() => values[i++]), [1, 6]);
-});
-```
-
-- [ ] **Step 4: Run tests to verify they fail**
-
-Run: `npm test`
-Expected: FAIL with "ENOENT ... index.html" (file does not exist yet).
-
-- [ ] **Step 5: Create index.html skeleton with the game block**
-
-`index.html`:
+- [ ] **Step 1: Create index.html with the game block**
 
 ```html
 <!doctype html>
@@ -164,126 +88,11 @@ Expected: FAIL with "ENOENT ... index.html" (file does not exist yet).
     return [rollDie(rng), rollDie(rng)];
   }
 
-  root.Kinito = { score, isKinito, rollDice };
-})(typeof window !== 'undefined' ? window : globalThis);
-</script>
-</body>
-</html>
-```
+  function parsePot(raw) {
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 1 ? n : 1;
+  }
 
-- [ ] **Step 6: Run tests to verify they pass**
-
-Run: `npm test`
-Expected: 3 tests pass.
-
-- [ ] **Step 7: Commit**
-
-```bash
-git add package.json index.html test/
-git commit -m "feat: scoring, kinito detection and test harness"
-```
-
----
-
-### Task 2: Reducer — basic round flow
-
-**Files:**
-- Modify: `index.html` (game block)
-- Modify: `test/game.test.js`
-
-**Interfaces:**
-- Consumes: `isKinito` from Task 1.
-- Produces: `Kinito.initialState(pot = 1) -> State`, `Kinito.reduce(state, action) -> State`.
-  State: `{ screen, pot, current, previous, attempts, challengeResult, potDrunk }`.
-  Actions handled here: `START`, `ROLL {dice}`, `HIDE`, `LIAR`, `NEW_ROUND`, `RESET_POT`.
-
-- [ ] **Step 1: Write the failing tests**
-
-Append to `test/game.test.js`:
-
-```js
-const { initialState, reduce } = Kinito;
-
-function run(actions, state = initialState()) {
-  return actions.reduce(reduce, state);
-}
-
-test('initialState starts on START with pot 1 and nothing rolled', () => {
-  assert.deepEqual(initialState(), {
-    screen: 'START', pot: 1, current: null, previous: null,
-    attempts: [], challengeResult: null, potDrunk: null,
-  });
-  assert.equal(initialState(3).pot, 3);
-});
-
-test('START moves to HANDOFF', () => {
-  assert.equal(run([{ type: 'START' }]).screen, 'HANDOFF');
-});
-
-test('ROLL on HANDOFF shows the dice on ROLLED', () => {
-  const s = run([{ type: 'START' }, { type: 'ROLL', dice: [3, 6] }]);
-  assert.equal(s.screen, 'ROLLED');
-  assert.deepEqual(s.current, [3, 6]);
-});
-
-test('ROLL is ignored when not on HANDOFF (double tap)', () => {
-  const rolled = run([{ type: 'START' }, { type: 'ROLL', dice: [3, 6] }]);
-  const again = reduce(rolled, { type: 'ROLL', dice: [1, 1] });
-  assert.equal(again, rolled);
-});
-
-test('HIDE stores the roll as previous and returns to HANDOFF', () => {
-  const s = run([{ type: 'START' }, { type: 'ROLL', dice: [3, 6] }, { type: 'HIDE' }]);
-  assert.equal(s.screen, 'HANDOFF');
-  assert.deepEqual(s.previous, [3, 6]);
-  assert.equal(s.current, null);
-});
-
-test('LIAR is ignored when there is no previous roll', () => {
-  const s = run([{ type: 'START' }]);
-  assert.equal(reduce(s, { type: 'LIAR' }), s);
-});
-
-test('LIAR reveals the previous roll', () => {
-  const s = run([
-    { type: 'START' }, { type: 'ROLL', dice: [3, 6] }, { type: 'HIDE' }, { type: 'LIAR' },
-  ]);
-  assert.equal(s.screen, 'LIAR_REVEAL');
-  assert.deepEqual(s.previous, [3, 6]);
-});
-
-test('NEW_ROUND after LIAR_REVEAL clears previous and returns to HANDOFF', () => {
-  const s = run([
-    { type: 'START' }, { type: 'ROLL', dice: [3, 6] }, { type: 'HIDE' },
-    { type: 'LIAR' }, { type: 'NEW_ROUND' },
-  ]);
-  assert.equal(s.screen, 'HANDOFF');
-  assert.equal(s.previous, null);
-  assert.equal(s.current, null);
-});
-
-test('RESET_POT only works on START', () => {
-  assert.equal(reduce(initialState(4), { type: 'RESET_POT' }).pot, 1);
-  const inGame = run([{ type: 'START' }], initialState(4));
-  assert.equal(reduce(inGame, { type: 'RESET_POT' }).pot, 4);
-});
-
-test('unknown actions return the same state object', () => {
-  const s = initialState();
-  assert.equal(reduce(s, { type: 'NOPE' }), s);
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npm test`
-Expected: new tests FAIL with "initialState is not a function" / "reduce is not a function".
-
-- [ ] **Step 3: Implement initialState and reduce**
-
-In the game block, after `rollDice`, add:
-
-```js
   function initialState(pot = 1) {
     return {
       screen: 'START',
@@ -315,161 +124,6 @@ In the game block, after `rollDice`, add:
         if (s.screen !== 'HANDOFF' || s.previous === null) return s;
         return { ...s, screen: 'LIAR_REVEAL' };
 
-      case 'NEW_ROUND':
-        if (s.screen !== 'LIAR_REVEAL' && s.screen !== 'CHALLENGE_RESULT') return s;
-        return {
-          ...s, screen: 'HANDOFF', current: null, previous: null,
-          attempts: [], challengeResult: null, potDrunk: null,
-        };
-
-      case 'RESET_POT':
-        return s.screen === 'START' ? { ...s, pot: 1 } : s;
-
-      default:
-        return s;
-    }
-  }
-```
-
-Update the export line:
-
-```js
-  root.Kinito = { score, isKinito, rollDice, initialState, reduce };
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npm test`
-Expected: all tests pass.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add index.html test/game.test.js
-git commit -m "feat: reducer for roll, hide, liar and new round"
-```
-
----
-
-### Task 3: Reducer — Kinito and the challenge
-
-**Files:**
-- Modify: `index.html` (game block, inside `reduce`)
-- Modify: `test/game.test.js`
-
-**Interfaces:**
-- Consumes: `reduce`, `initialState`, `isKinito`.
-- Produces: actions `BEGIN_CHALLENGE`, `CHALLENGE_ROLL {dice}`. State fields `attempts`, `challengeResult` (`'HIT' | 'MISS' | null`), `potDrunk` (number of shots drunk on a MISS, else null).
-
-- [ ] **Step 1: Write the failing tests**
-
-Append to `test/game.test.js`:
-
-```js
-test('rolling a Kinito skips ROLLED and goes straight to KINITO', () => {
-  const s = run([{ type: 'START' }, { type: 'ROLL', dice: [6, 5] }]);
-  assert.equal(s.screen, 'KINITO');
-  assert.deepEqual(s.current, [6, 5]);
-});
-
-test('Kinito on the first roll of a round works with previous null', () => {
-  const s = run([{ type: 'START' }, { type: 'ROLL', dice: [2, 1] }]);
-  assert.equal(s.screen, 'KINITO');
-  assert.equal(s.previous, null);
-});
-
-test('BEGIN_CHALLENGE moves to CHALLENGE with no attempts', () => {
-  const s = run([{ type: 'START' }, { type: 'ROLL', dice: [6, 6] }, { type: 'BEGIN_CHALLENGE' }]);
-  assert.equal(s.screen, 'CHALLENGE');
-  assert.deepEqual(s.attempts, []);
-});
-
-test('BEGIN_CHALLENGE is ignored off the KINITO screen', () => {
-  const s = run([{ type: 'START' }]);
-  assert.equal(reduce(s, { type: 'BEGIN_CHALLENGE' }), s);
-});
-
-const toChallenge = [
-  { type: 'START' }, { type: 'ROLL', dice: [6, 6] }, { type: 'BEGIN_CHALLENGE' },
-];
-
-test('a miss records the attempt and stays on CHALLENGE', () => {
-  const s = run([...toChallenge, { type: 'CHALLENGE_ROLL', dice: [3, 4] }]);
-  assert.equal(s.screen, 'CHALLENGE');
-  assert.deepEqual(s.attempts, [[3, 4]]);
-  assert.equal(s.pot, 1);
-});
-
-test('a hit on any attempt adds one shot to the pot', () => {
-  for (const misses of [0, 1, 2]) {
-    const actions = [...toChallenge];
-    for (let i = 0; i < misses; i++) actions.push({ type: 'CHALLENGE_ROLL', dice: [1, 1] });
-    actions.push({ type: 'CHALLENGE_ROLL', dice: [1, 2] });
-    const s = run(actions, initialState(2));
-    assert.equal(s.screen, 'CHALLENGE_RESULT', `after ${misses} misses`);
-    assert.equal(s.challengeResult, 'HIT');
-    assert.equal(s.pot, 3);
-    assert.equal(s.attempts.length, misses + 1);
-  }
-});
-
-test('challenge hit counts dice in either order', () => {
-  const a = run([...toChallenge, { type: 'CHALLENGE_ROLL', dice: [2, 1] }]);
-  const b = run([...toChallenge, { type: 'CHALLENGE_ROLL', dice: [1, 2] }]);
-  assert.equal(a.challengeResult, 'HIT');
-  assert.equal(b.challengeResult, 'HIT');
-});
-
-test('three misses drinks the pot and resets it to 1', () => {
-  const s = run([
-    ...toChallenge,
-    { type: 'CHALLENGE_ROLL', dice: [1, 1] },
-    { type: 'CHALLENGE_ROLL', dice: [3, 3] },
-    { type: 'CHALLENGE_ROLL', dice: [4, 6] },
-  ], initialState(3));
-  assert.equal(s.screen, 'CHALLENGE_RESULT');
-  assert.equal(s.challengeResult, 'MISS');
-  assert.equal(s.potDrunk, 3);
-  assert.equal(s.pot, 1);
-});
-
-test('CHALLENGE_ROLL is ignored once the challenge has resolved', () => {
-  const done = run([...toChallenge, { type: 'CHALLENGE_ROLL', dice: [6, 6] }]);
-  assert.equal(reduce(done, { type: 'CHALLENGE_ROLL', dice: [6, 6] }), done);
-});
-
-test('NEW_ROUND after a challenge clears attempts, result and potDrunk but keeps pot', () => {
-  const s = run([...toChallenge, { type: 'CHALLENGE_ROLL', dice: [6, 5] }, { type: 'NEW_ROUND' }]);
-  assert.equal(s.screen, 'HANDOFF');
-  assert.equal(s.pot, 2);
-  assert.deepEqual(s.attempts, []);
-  assert.equal(s.challengeResult, null);
-  assert.equal(s.potDrunk, null);
-  assert.equal(s.previous, null);
-});
-
-test('NEW_ROUND is ignored from HANDOFF, ROLLED, KINITO and CHALLENGE', () => {
-  const handoff = run([{ type: 'START' }]);
-  assert.equal(reduce(handoff, { type: 'NEW_ROUND' }), handoff);
-  const rolled = run([{ type: 'START' }, { type: 'ROLL', dice: [3, 4] }]);
-  assert.equal(reduce(rolled, { type: 'NEW_ROUND' }), rolled);
-  const kinito = run([{ type: 'START' }, { type: 'ROLL', dice: [6, 6] }]);
-  assert.equal(reduce(kinito, { type: 'NEW_ROUND' }), kinito);
-  const challenge = run(toChallenge);
-  assert.equal(reduce(challenge, { type: 'NEW_ROUND' }), challenge);
-});
-```
-
-- [ ] **Step 2: Run tests to verify they fail**
-
-Run: `npm test`
-Expected: Kinito/challenge tests FAIL (screen stays `KINITO` or `CHALLENGE` because the actions are unhandled).
-
-- [ ] **Step 3: Add the two cases to `reduce`**
-
-Insert before `case 'NEW_ROUND':`:
-
-```js
       case 'BEGIN_CHALLENGE':
         if (s.screen !== 'KINITO') return s;
         return { ...s, screen: 'CHALLENGE', attempts: [] };
@@ -489,91 +143,58 @@ Insert before `case 'NEW_ROUND':`:
         }
         return { ...s, attempts };
       }
+
+      case 'NEW_ROUND':
+        if (s.screen !== 'LIAR_REVEAL' && s.screen !== 'CHALLENGE_RESULT') return s;
+        return {
+          ...s, screen: 'HANDOFF', current: null, previous: null,
+          attempts: [], challengeResult: null, potDrunk: null,
+        };
+
+      case 'RESET_POT':
+        return s.screen === 'START' ? { ...s, pot: 1 } : s;
+
+      default:
+        return s;
+    }
+  }
+
+  root.Kinito = { score, isKinito, rollDice, parsePot, initialState, reduce };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+</body>
+</html>
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 2: Sanity check in the browser console**
 
-Run: `npm test`
-Expected: all tests pass.
+Run: `open index.html`, open devtools console, paste:
 
-- [ ] **Step 5: Commit**
+```js
+Kinito.score(3, 6)            // 63
+Kinito.isKinito(5, 6)         // true
+Kinito.parsePot('abc')        // 1
+Kinito.reduce(Kinito.initialState(), { type: 'START' }).screen   // 'HANDOFF'
+```
+
+- [ ] **Step 3: Commit**
 
 ```bash
-git add index.html test/game.test.js
-git commit -m "feat: kinito challenge and pot handling in reducer"
+git add index.html
+git commit -m "feat: kinito game logic"
 ```
 
 ---
 
-### Task 4: Pot persistence helper
-
-**Files:**
-- Modify: `index.html` (game block)
-- Modify: `test/game.test.js`
-
-**Interfaces:**
-- Produces: `Kinito.parsePot(raw) -> number` — accepts whatever came out of localStorage, returns an integer ≥ 1, defaulting to 1.
-
-- [ ] **Step 1: Write the failing test**
-
-Append to `test/game.test.js`:
-
-```js
-test('parsePot falls back to 1 for anything that is not a positive integer', () => {
-  assert.equal(Kinito.parsePot('3'), 3);
-  assert.equal(Kinito.parsePot('1'), 1);
-  for (const bad of [null, undefined, '', 'abc', '0', '-3', '2.5', 'NaN']) {
-    assert.equal(Kinito.parsePot(bad), 1, String(bad));
-  }
-});
-```
-
-- [ ] **Step 2: Run test to verify it fails**
-
-Run: `npm test`
-Expected: FAIL with "Kinito.parsePot is not a function".
-
-- [ ] **Step 3: Implement parsePot**
-
-In the game block, before the export:
-
-```js
-  function parsePot(raw) {
-    const n = Number(raw);
-    return Number.isInteger(n) && n >= 1 ? n : 1;
-  }
-```
-
-Export line becomes:
-
-```js
-  root.Kinito = { score, isKinito, rollDice, initialState, reduce, parsePot };
-```
-
-- [ ] **Step 4: Run tests to verify they pass**
-
-Run: `npm test`
-Expected: all tests pass.
-
-- [ ] **Step 5: Commit**
-
-```bash
-git add index.html test/game.test.js
-git commit -m "feat: parsePot guards localStorage input"
-```
-
----
-
-### Task 5: UI — markup, styles, render and dispatch
+### Task 2: UI — markup, styles, render and dispatch
 
 **Files:**
 - Modify: `index.html` (add `<style>`, body markup, `<script id="ui">`)
 
 **Interfaces:**
-- Consumes: everything on `Kinito` from Tasks 1–4.
-- Produces: the working page. No new exports.
+- Consumes: everything on `Kinito` from Task 1.
 
-Dice are rendered with the Unicode die faces U+2680–U+2685, coloured with CSS.
+Dice are rendered with the Unicode die faces U+2680–U+2685.
 
 - [ ] **Step 1: Add styles inside `<head>` after `<title>`**
 
@@ -794,12 +415,7 @@ Dice are rendered with the Unicode die faces U+2680–U+2685, coloured with CSS.
 </script>
 ```
 
-- [ ] **Step 4: Run unit tests to confirm the game block is untouched**
-
-Run: `npm test`
-Expected: all tests pass.
-
-- [ ] **Step 5: Smoke test in a browser**
+- [ ] **Step 4: Smoke test in a browser**
 
 Run: `open index.html`
 
@@ -809,9 +425,10 @@ Check, in order:
 3. LIAR → previous dice shown. NEW ROUND → HANDOFF, LIAR hidden again.
 4. Keep rolling until a Kinito appears (about 1 in 12 rolls) → flashing KINITO screen, CHALLENGE → "Attempt 1 of 3", ROLL up to three times → result screen, pot header updates.
 5. Refresh the page: pot value survives. RESET POT on START sets it back to 1.
-6. In devtools, toggle a phone viewport (iPhone 13 or similar): no horizontal scroll, all buttons reachable.
+6. In devtools console: `localStorage.setItem('kinito.pot','abc')`, refresh → "Pot: 1 shot".
+7. Toggle a phone viewport (iPhone 13 or similar): no horizontal scroll, all buttons reachable.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 5: Commit**
 
 ```bash
 git add index.html
@@ -820,7 +437,7 @@ git commit -m "feat: mobile UI for kinito game"
 
 ---
 
-### Task 6: README
+### Task 3: README
 
 **Files:**
 - Create: `README.md`
@@ -839,18 +456,12 @@ Open `index.html` on a phone (or host it anywhere static).
 1. Put one shot in a glass. That's the pot.
 2. Tap ROLL. Your score is the higher die then the lower: 3 and 6 is 63.
 3. Say a number out loud (truth or bluff), tap HIDE & PASS, hand it left.
-4. Next player either tap ROLL and must claim higher, or taps LIAR! to
+4. Next player either taps ROLL and must claim higher, or taps LIAR! to
    reveal the last roll. Whoever was wrong drinks from their own glass.
 5. Rolling 2:1, 6:5 or 6:6 is a KINITO. The player on the right gets three
    open rolls to hit any Kinito. Hit: add a shot to the pot. Miss: drink it.
 
 The app tracks the pot and remembers it between refreshes.
-
-## Develop
-
-No build, no dependencies. Requires Node 20+ for tests.
-
-    npm test
 ```
 
 - [ ] **Step 2: Commit**
