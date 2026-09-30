@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Kinito</title>
+</head>
+<body>
+<script id="game">
+(function (root) {
+  'use strict';
+
+  const KINITO_PAIRS = [[1, 2], [5, 6], [6, 6]];
+
+  function sorted(a, b) {
+    return a <= b ? [a, b] : [b, a];
+  }
+
+  function score(a, b) {
+    const [lo, hi] = sorted(a, b);
+    return hi * 10 + lo;
+  }
+
+  function isKinito(a, b) {
+    const [lo, hi] = sorted(a, b);
+    return KINITO_PAIRS.some(([x, y]) => x === lo && y === hi);
+  }
+
+  function rollDie(rng) {
+    return Math.floor(rng() * 6) + 1;
+  }
+
+  function rollDice(rng = Math.random) {
+    return [rollDie(rng), rollDie(rng)];
+  }
+
+  function parsePot(raw) {
+    const n = Number(raw);
+    return Number.isInteger(n) && n >= 1 ? n : 1;
+  }
+
+  function initialState(pot = 1) {
+    return {
+      screen: 'START',
+      pot,
+      current: null,
+      previous: null,
+      attempts: [],
+      challengeResult: null,
+      potDrunk: null,
+    };
+  }
+
+  function reduce(s, action) {
+    switch (action.type) {
+      case 'START':
+        return s.screen === 'START' ? { ...s, screen: 'HANDOFF' } : s;
+
+      case 'ROLL': {
+        if (s.screen !== 'HANDOFF') return s;
+        const [a, b] = action.dice;
+        return { ...s, current: action.dice, screen: isKinito(a, b) ? 'KINITO' : 'ROLLED' };
+      }
+
+      case 'HIDE':
+        if (s.screen !== 'ROLLED') return s;
+        return { ...s, screen: 'HANDOFF', previous: s.current, current: null };
+
+      case 'LIAR':
+        if (s.screen !== 'HANDOFF' || s.previous === null) return s;
+        return { ...s, screen: 'LIAR_REVEAL' };
+
+      case 'BEGIN_CHALLENGE':
+        if (s.screen !== 'KINITO') return s;
+        return { ...s, screen: 'CHALLENGE', attempts: [] };
+
+      case 'CHALLENGE_ROLL': {
+        if (s.screen !== 'CHALLENGE') return s;
+        const [a, b] = action.dice;
+        const attempts = [...s.attempts, action.dice];
+        if (isKinito(a, b)) {
+          return { ...s, attempts, screen: 'CHALLENGE_RESULT', challengeResult: 'HIT', pot: s.pot + 1 };
+        }
+        if (attempts.length >= 3) {
+          return {
+            ...s, attempts, screen: 'CHALLENGE_RESULT', challengeResult: 'MISS',
+            potDrunk: s.pot, pot: 1,
+          };
+        }
+        return { ...s, attempts };
+      }
+
+      case 'NEW_ROUND':
+        if (s.screen !== 'LIAR_REVEAL' && s.screen !== 'CHALLENGE_RESULT') return s;
+        return {
+          ...s, screen: 'HANDOFF', current: null, previous: null,
+          attempts: [], challengeResult: null, potDrunk: null,
+        };
+
+      case 'RESET_POT':
+        return s.screen === 'START' ? { ...s, pot: 1 } : s;
+
+      default:
+        return s;
+    }
+  }
+
+  root.Kinito = { score, isKinito, rollDice, parsePot, initialState, reduce };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+</body>
+</html>
